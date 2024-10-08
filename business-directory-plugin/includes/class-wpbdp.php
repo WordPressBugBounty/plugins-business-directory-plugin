@@ -55,7 +55,7 @@ final class WPBDP {
 	}
 
 	private function setup_constants() {
-		define( 'WPBDP_VERSION', '6.4.4' );
+		define( 'WPBDP_VERSION', '6.4.6' );
 
 		define( 'WPBDP_PATH', wp_normalize_path( plugin_dir_path( WPBDP_PLUGIN_FILE ) ) );
 		define( 'WPBDP_INC', trailingslashit( WPBDP_PATH . 'includes' ) );
@@ -226,7 +226,7 @@ final class WPBDP {
 		do_action( 'wpbdp_modules_loaded' );
 
 		do_action_ref_array( 'wpbdp_register_settings', array( &$this->settings ) );
-		do_action( 'wpbdp_register_fields', $this->formfields );
+		do_action( 'wpbdp_register_fields', $this->form_fields );
 		do_action( 'wpbdp_modules_init' );
 
 		$this->listings = new WPBDP_Listings_API();
