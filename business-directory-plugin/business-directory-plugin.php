@@ -3,7 +3,7 @@
  * Plugin Name: Business Directory Plugin
  * Plugin URI: https://businessdirectoryplugin.com
  * Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
- * Version: 6.4.8
+ * Version: 6.4.9
  * Author: Business Directory Team
  * Author URI: https://businessdirectoryplugin.com
  * Text Domain: business-directory-plugin
@@ -71,7 +71,9 @@ function wpbdp_class_autoloader( $class_name, $filepath ) {
 
 	$filepath .= '/includes/';
 
-	if ( strpos( 'Admin', $class_name ) ) {
+	if ( strpos( $class_name, 'Strp' ) ) {
+		$filepath .= 'gateways/stripe/';
+	} elseif ( strpos( $class_name, 'Admin' ) ) {
 		$filepath .= 'admin/';
 	}
 
@@ -90,8 +92,9 @@ function wpbdp_class_autoloader( $class_name, $filepath ) {
 		$filepath .= 'models/';
 	}
 
-	if ( file_exists( $filepath . strtolower( $class_name ) . '.php' ) ) {
-		require $filepath . strtolower( $class_name ) . '.php';
+	$filename = strtolower( $class_name ) . '.php';
+	if ( file_exists( $filepath . $filename ) ) {
+		require $filepath . $filename;
 		return;
 	}
 
