@@ -412,7 +412,7 @@ if ( ! class_exists( 'WPBDP_FormFields' ) ) {
 				),
 				'phone'    => array(
 					'label'         => __( 'Phone', 'business-directory-plugin' ),
-					'field_type'    => 'textfield',
+					'field_type'    => 'phone_number',
 					'association'   => 'meta',
 					'weight'        => 4,
 					'display_flags' => array( 'excerpt', 'listing', 'search', 'privacy' ),
@@ -465,6 +465,10 @@ if ( ! class_exists( 'WPBDP_FormFields' ) ) {
 		}
 
 		public function create_default_fields( $identifiers = array() ) {
+			if ( empty( $this->get_missing_required_fields() ) ) {
+				return;
+			}
+
 			$default_fields   = $this->get_default_fields();
 			$fields_to_create = $identifiers ? array_intersect_key( $default_fields, array_flip( $identifiers ) ) : $default_fields;
 
