@@ -569,11 +569,17 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 				return;
 			}
 
+			self::setup_sales_api();
+
+			$utm_medium = 'admin-menu';
+			$cta_text   = WPBDP_Sales_API::get_best_sale_value( 'submenu_cta_text' ) ?? __( 'Upgrade to Premium', 'business-directory-plugin' );
+			$cta_url    = WPBDP_Sales_API::get_best_sale_cta_link( 'submenu_cta_link', $utm_medium ) ?? wpbdp_admin_upgrade_link( $utm_medium );
+
 			global $submenu;
 			$submenu[ $this->menu_id ][] = array(
-				'<span class="wpbdp-upgrade-submenu">' . esc_html__( 'Upgrade to Premium', 'business-directory-plugin' ) . '</span>',
+				'<span class="wpbdp-upgrade-submenu">' . esc_html( $cta_text ) . '</span>',
 				'manage_options',
-				wpbdp_admin_upgrade_link( 'admin-menu' ),
+				$cta_url,
 			);
 			add_action( 'admin_footer', array( &$this, 'highlight_menu' ) );
 		}
@@ -826,7 +832,7 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 		public function ajax_formfields_reorder() {
 			$response = new WPBDP_AJAX_Response();
 
-			if ( ! wpbdp_user_is_admin() ) {
+			if ( ! wpbdp_user_is_admin() || ! check_ajax_referer( 'wpbdp_ajax', 'nonce', false ) ) {
 				$response->send_error();
 			}
 
@@ -865,7 +871,7 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 
 			$response = new WPBDP_AJAX_Response();
 
-			if ( ! wpbdp_user_is_admin() ) {
+			if ( ! wpbdp_user_is_admin() || ! check_ajax_referer( 'wpbdp_ajax', 'nonce', false ) ) {
 				$response->send_error();
 			}
 
@@ -941,7 +947,7 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 			$this->check_server_requirements();
 			$this->check_setup();
 			$this->check_deprecation_warnings();
-
+			$this->check_inbox_notices();
 			$this->maybe_request_review();
 
 			do_action( 'wpbdp_admin_notices' );
@@ -980,8 +986,8 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 
 				$this->maybe_update_notice_classes( $class );
 
-				echo '<div class="wpbdp-notice notice ' . esc_attr( $class ) . '">';
-				echo '<p>' . $text . '</p>';
+			echo '<div class="wpbdp-notice notice ' . esc_attr( $class ) . '">';
+			echo '<p>' . wp_kses_post( $text ) . '</p>';
 
 				if ( ! empty( $extra['dismissible-id'] ) ) {
 					printf(
@@ -1038,14 +1044,57 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 			if ( $module_count > 0 ) {
 				return;
 			}
+
+			self::setup_sales_api();
+
+			$utm_medium = 'upgrade-bar';
+			$cta_url    = WPBDP_Sales_API::get_best_sale_cta_link( 'lite_banner_cta_link', $utm_medium ) ?? wpbdp_admin_upgrade_link( $utm_medium );
+			$cta_text   = WPBDP_Sales_API::get_best_sale_value( 'lite_banner_cta_text' ) ?? 'upgrading to premium';
 			?>
 			<div class="wpbdp-notice wpbdp-upgrade-bar wpbdp-inline-notice">
 				You're using Business Directory Plugin Lite. To unlock more features consider
-				<a href="<?php echo esc_url( wpbdp_admin_upgrade_link( 'upgrade-bar' ) ); ?>">
-					upgrading to premium.
+				<a href="<?php echo esc_url( $cta_url ); ?>">
+					<?php echo esc_html( $cta_text ); ?>
 				</a>
 			</div>
 			<?php
+		}
+
+		/**
+		 * Make sure that the required files for the Sales API have been included.
+		 *
+		 * @since 6.4.18
+		 *
+		 * @return void
+		 */
+		public static function setup_sales_api() {
+			self::setup_module_api_with_who_trait( 'sales' );
+		}
+
+		/**
+		 * Make sure that the required files for the Inbox API have been included.
+		 *
+		 * @since 6.4.18
+		 *
+		 * @return void
+		 */
+		private static function setup_inbox_api() {
+			self::setup_module_api_with_who_trait( 'inbox' );
+		}
+
+		/**
+		 * Make sure that the required files for a child API of the module API with the Who trait have been included.
+		 *
+		 * @since 6.4.18
+		 *
+		 * @param string $type Either 'inbox' or 'sales'.
+		 *
+		 * @return void
+		 */
+		private static function setup_module_api_with_who_trait( $type ) {
+			include_once WPBDP_PATH . 'includes/admin/traits/class-who-trait.php';
+			include_once WPBDP_PATH . 'includes/admin/helpers/class-modules-api.php';
+			include_once WPBDP_PATH . 'includes/admin/helpers/class-' . $type . '-api.php';
 		}
 
 		/**
@@ -1063,16 +1112,52 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 			return count( array_keys( $module_list ) );
 		}
 
-		function handle_actions() {
+		/**
+		 * Validate the action request.
+		 *
+		 * @since 6.4.20
+		 *
+		 * @param string $action The action to validate.
+		 *
+		 * @return bool
+		 */
+		private function validate_action_request( $action ) {
+			$protected_actions = apply_filters(
+				'wpbdp_admin_protected_actions',
+				array(
+					'change-to-publish',
+					'change-to-pending',
+					'change-to-draft',
+					'change-to-expired',
+					'change-to-complete',
+					'approve-payments',
+					'assignfee',
+					'renewlisting',
+					'send-renewal-email',
+					'delete-flagging',
+					'send-access-keys',
+				)
+			);
+
+			if ( in_array( $action, $protected_actions, true ) ) {
+				check_admin_referer( 'wpbdp_handle_action_' . $action );
+			}
+
+			return true;
+		}
+
+		public function handle_actions() {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			if ( ! isset( $_REQUEST['wpbdmaction'] ) || ! isset( $_REQUEST['post'] ) ) {
 				return;
 			}
 
 			$action = wpbdp_get_var( array( 'param' => 'wpbdmaction' ), 'request' );
-			$posts  = wpbdp_get_var( array( 'param' => 'post' ), 'request' );
-			$posts  = is_array( $posts ) ? $posts : array( $posts );
 
-			$listings_api = wpbdp_listings_api();
+			$this->validate_action_request( $action );
+
+			$posts = wpbdp_get_var( array( 'param' => 'post' ), 'request' );
+			$posts = is_array( $posts ) ? $posts : array( $posts );
 
 			if ( ! wpbdp_user_is_admin() ) {
 				exit;
@@ -1490,6 +1575,9 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 		}
 
 		public function ajax_dismiss_notification_server_requirements() {
+		WPBDP_App_Helper::permission_check();
+		check_ajax_referer( 'wpbdp_ajax', 'nonce' );
+
 			set_transient( 'wpbdp_server_requirements_warning_dismissed', true, WEEK_IN_SECONDS );
 		}
 
@@ -1524,6 +1612,41 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 				foreach ( $wpbdp_deprecation_warnings as $warning ) {
 					$this->messages[] = $warning;
 				}
+			}
+		}
+
+		/**
+		 * Check for messages from the Inbox API.
+		 *
+		 * @since 6.4.18
+		 *
+		 * @return void
+		 */
+		private function check_inbox_notices() {
+			if ( ! WPBDP_App_Helper::is_bd_page() ) {
+				return;
+			}
+
+			self::setup_inbox_api();
+
+			$api      = new WPBDP_Inbox_API();
+			$messages = array_filter(
+				$api->get_api_info(),
+				function ( $message ) use ( $api ) {
+					return $api->should_include_message( $message );
+				}
+			);
+
+			if ( ! $messages ) {
+				return;
+			}
+
+			foreach ( $messages as $message ) {
+				$this->messages[] = array(
+					'<strong>' . esc_html( $message['subject'] ) . '</strong><br>' . esc_html( $message['message'] ) . '<br><br>' . wp_kses_post( $message['cta'] ),
+					'notice-error is-dismissible',
+					array( 'dismissible-id' => 'inbox-' . $message['key'] ),
+				);
 			}
 		}
 

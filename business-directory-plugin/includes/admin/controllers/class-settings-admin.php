@@ -16,7 +16,6 @@ class WPBDP__Settings_Admin {
 		add_action( 'wpbdp_action_reset-default-settings', array( &$this, 'settings_reset_defaults' ) );
 
 		add_action( 'wp_ajax_wpbdp-file-upload', array( $this, '_ajax_file_upload' ) );
-		add_action( 'wp_ajax_nopriv_wpbdp-file-upload', array( $this, '_ajax_file_upload' ) );
 
 		add_filter( 'wpbdp_setting_type_pro_license', array( &$this, 'no_license' ), 20, 2 );
 	}
@@ -652,10 +651,15 @@ class WPBDP__Settings_Admin {
 	 * @since 6.0.1
 	 */
 	private function get_upgrade_message() {
+		WPBDP_Admin::setup_sales_api();
+		$utm_medium = 'licenses_tab';
+		$cta_url    = WPBDP_Sales_API::get_best_sale_cta_link( 'build_more_cta_link	', $utm_medium ) ?? wpbdp_admin_upgrade_link( $utm_medium );
+		$cta_text   = WPBDP_Sales_API::get_best_sale_value( 'build_more_cta_text' ) ?? __( 'Upgrade Now', 'business-directory-plugin' );
+
 		$html  = '<div class="wpbdp_upgrade_to_pro">';
 		$html .= '<h3>' . esc_html__( 'Build more powerful directories', 'business-directory-plugin' ) . '</h3>';
 		$html .= '<p>' . esc_html__( 'Add category images, maps, filter by location, payment gateways, and more.', 'business-directory-plugin' ) . '</p>';
-		$html .= '<p><a href="' . esc_url( wpbdp_admin_upgrade_link( 'licenses_tab' ) ) . '" target="_blank" rel="noopener" class="button-primary">' . esc_html__( 'Upgrade Now', 'business-directory-plugin' ) . '</a></p>';
+		$html .= '<p><a href="' . esc_url( $cta_url ) . '" target="_blank" rel="noopener" class="button-primary">' . esc_html( $cta_text ) . '</a></p>';
 		$html .= '<a href="' . esc_url( wpbdp_admin_upgrade_link( 'licenses_purchased', 'knowledge-base/installation-guide/' ) ) . '">' . esc_html__( 'Already purchased?', 'business-directory-plugin' ) . '</a>';
 		$html .= '</div>';
 		$html .= '<style>#save-changes{display:none}</style>';
@@ -957,6 +961,8 @@ class WPBDP__Settings_Admin {
 	}
 
 	public function _ajax_file_upload() {
+		WPBDP_App_Helper::permission_check();
+
 		$setting_id = wpbdp_get_var( array( 'param' => 'setting_id' ), 'request' );
 		$nonce      = wpbdp_get_var( array( 'param' => 'nonce' ), 'request' );
 

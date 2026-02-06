@@ -95,7 +95,7 @@ class WPBDP__Views__Submit_Listing extends WPBDP__Authenticated_Listing_View {
 		return $this->editing;
 	}
 
-	public function dispatch( $ajax_load = false ) { // phpcs:ignore SlevomatCodingStandard.Functions.FunctionLength
+	public function dispatch( $ajax_load = false ) { // phpcs:ignore SlevomatCodingStandard.Functions.FunctionLength, SlevomatCodingStandard.Complexity.Cognitive.ComplexityTooHigh
 		$this->is_ajax = ! empty( $ajax_load );
 
 		$msg = '';
@@ -126,6 +126,13 @@ class WPBDP__Views__Submit_Listing extends WPBDP__Authenticated_Listing_View {
 		}
 
 		$this->find_or_create_listing();
+
+		if ( $this->editing && ! wpbdp_user_can( 'edit', $this->listing->get_id() ) ) {
+			return wpbdp_render_msg(
+				__( "You don't have permission to edit this listing.", 'business-directory-plugin' ),
+				'error'
+			);
+		}
 
 		$this->maybe_reset_form();
 
@@ -363,7 +370,7 @@ class WPBDP__Views__Submit_Listing extends WPBDP__Authenticated_Listing_View {
 	public function ajax_reset_plan() {
 		$res = new WPBDP_AJAX_Response();
 
-		if ( ! $this->can_submit( $msg ) || empty( $_POST['listing_id'] ) ) {
+		if ( ! $this->can_submit( $msg ) || empty( $_POST['listing_id'] ) || ! $this->verify_ajax_request() ) {
 			wp_die();
 		}
 
@@ -449,6 +456,10 @@ class WPBDP__Views__Submit_Listing extends WPBDP__Authenticated_Listing_View {
 			$res->send_error( $msg );
 		}
 
+		if ( ! $this->verify_ajax_request() ) {
+			$res->send_error( __( 'You do not have permission to perform this action.', 'business-directory-plugin' ) );
+		}
+
 		$this->find_or_create_listing();
 
 		// Ignore 'save_listing' for AJAX requests in order to leave it as the final POST with all the data.
@@ -488,6 +499,37 @@ class WPBDP__Views__Submit_Listing extends WPBDP__Authenticated_Listing_View {
 		$res->add( 'messages', $this->messages );
 		$res->add( 'sections', $sections );
 		$res->send();
+	}
+
+	/**
+	 * Verify nonce and check ownership for existing listings in AJAX requests.
+	 *
+	 * @since 6.4.21
+	 *
+	 * @return bool True if the request is valid, false otherwise.
+	 */
+	private function verify_ajax_request() {
+		if ( ! check_ajax_referer( 'wpbdp_ajax', 'nonce', false ) ) {
+			return false;
+		}
+
+		$listing_id = absint( wpbdp_get_var( array( 'param' => 'listing_id' ), 'post' ) );
+		if ( ! $listing_id ) {
+			return true;
+		}
+
+		$post_status = get_post_status( $listing_id );
+		if ( ! $post_status || 'auto-draft' === $post_status ) {
+			return true;
+		}
+
+		if ( ! wpbdp_user_can( 'edit', $listing_id ) ) {
+			return false;
+		}
+
+		$this->editing = true;
+
+		return true;
 	}
 
 	public function messages( $msg, $type = 'notice', $context = 'general' ) {

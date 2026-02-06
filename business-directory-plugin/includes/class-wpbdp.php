@@ -55,7 +55,7 @@ final class WPBDP {
 	}
 
 	private function setup_constants() {
-		define( 'WPBDP_VERSION', '6.4.17' );
+		define( 'WPBDP_VERSION', '6.4.21' );
 
 		define( 'WPBDP_PATH', wp_normalize_path( plugin_dir_path( WPBDP_PLUGIN_FILE ) ) );
 		define( 'WPBDP_INC', trailingslashit( WPBDP_PATH . 'includes' ) );
@@ -414,14 +414,30 @@ final class WPBDP {
 		$add_links = array();
 
 		if ( ! WPBDP_Admin_Education::is_installed( 'premium' ) ) {
-			$add_links[] = '<a href="' . esc_url( wpbdp_admin_upgrade_link( 'plugin-row' ) ) . '" target="_blank" rel="noopener" style="color:#1da867" class="wpbdp-upgrade-link">' .
-				'<b>' . esc_html__( 'Upgrade to Premium', 'business-directory-plugin' ) . '</b>' .
-				'</a>';
+			$add_links[] = $this->get_plugin_upgrade_action_link();
 		}
 
 		$add_links['settings'] = '<a href="' . esc_url( admin_url( 'admin.php?page=wpbdp_settings' ) ) . '">' . esc_html__( 'Settings', 'business-directory-plugin' ) . '</a>';
 
 		return array_merge( $add_links, $links );
+	}
+
+	/**
+	 * Get the link for the upgrade CTA on the plugins page.
+	 *
+	 * @since 6.4.18
+	 *
+	 * @return string
+	 */
+	private function get_plugin_upgrade_action_link() {
+		WPBDP_Admin::setup_sales_api();
+		$utm_medium = 'plugin-row';
+		$cta_url    = WPBDP_Sales_API::get_best_sale_cta_link( 'plugin_page_cta_link', $utm_medium ) ?? wpbdp_admin_upgrade_link( $utm_medium );
+		$cta_text   = WPBDP_Sales_API::get_best_sale_value( 'plugin_page_cta_text' ) ?? __( 'Upgrade to Premium', 'business-directory-plugin' );
+
+		return '<a href="' . esc_url( $cta_url ) . '" target="_blank" rel="noopener" style="color:#1da867" class="wpbdp-upgrade-link">' .
+			'<b>' . esc_html( $cta_text ) . '</b>' .
+		'</a>';
 	}
 
 	public function is_plugin_page() {
@@ -634,6 +650,10 @@ final class WPBDP {
 			$res->send_error();
 		}
 
+		if ( ! wpbdp_user_can( 'edit', $listing_id ) ) {
+			$res->send_error();
+		}
+
 		// Remove from images list.
 		$listing->remove_image( $image_id );
 
@@ -664,6 +684,11 @@ final class WPBDP {
 
 		if ( ! wp_verify_nonce( $nonce, 'listing-' . $listing_id . '-image-from-media' ) ) {
 			$json_data['errors'] = esc_html__( 'Could not verify the image upload request. If problem persists contact site admin.', 'business-directory-plugin' );
+			wp_send_json_error( $json_data );
+		}
+
+		if ( ! wpbdp_user_can( 'edit', $listing_id ) ) {
+			$json_data['errors'] = esc_html__( 'You do not have permission to update this listing.', 'business-directory-plugin' );
 			wp_send_json_error( $json_data );
 		}
 
