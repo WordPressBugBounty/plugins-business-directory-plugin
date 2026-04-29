@@ -33,6 +33,20 @@ class WPBDP_FieldTypes_Twitter extends WPBDP_Form_Field_Type {
 	}
 
 
+	/**
+	 * Sanitize the field input value.
+	 *
+	 * @since 6.4.23
+	 *
+	 * @param WPBDP_Form_Field $field The field object.
+	 * @param string           $input The raw input value.
+	 *
+	 * @return string
+	 */
+	public function convert_input( &$field, $input ) {
+		return sanitize_text_field( $input );
+	}
+
 	public function render_field_inner( &$field, $value, $context, &$extra = null, $field_settings = array() ) {
 		// twitter fields are rendered as normal textfields
 		global $wpbdp;
@@ -67,7 +81,7 @@ class WPBDP_FieldTypes_Twitter extends WPBDP_Form_Field_Type {
 			esc_attr( $value ),
 			! empty( $field->data( 'show_count' ) ) ? 'true' : 'false',
 			substr( get_bloginfo( 'language' ), 0, 2 ),
-			$value
+			esc_html( $value )
 		);
 		$html .= '<script>' .
 			'!function(d,s,id){' .

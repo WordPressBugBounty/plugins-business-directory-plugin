@@ -20,6 +20,22 @@ class WPBDP_FieldTypes_Facebook extends WPBDP_Form_Field_Type {
 		return $wpbdp->form_fields->get_field_type( 'textfield' )->render_field_inner( $field, $value, $context, $extra, $field_settings );
 	}
 
+	/**
+	 * Sanitize the field input value.
+	 *
+	 * @since 6.4.23
+	 *
+	 * @param WPBDP_Form_Field $field The field object.
+	 * @param string           $input The raw input value.
+	 *
+	 * @return string
+	 */
+	public function convert_input( &$field, $input ) {
+		$input = is_scalar( $input ) ? trim( (string) $input ) : '';
+
+		return $input ? esc_url_raw( $input ) : '';
+	}
+
 	public function get_supported_associations() {
 		return array( 'meta' );
 	}
@@ -44,7 +60,7 @@ class WPBDP_FieldTypes_Facebook extends WPBDP_Form_Field_Type {
 
 		// data-layout can be 'box_count', 'standard' or 'button_count'
 		// ref: https://developers.facebook.com/docs/reference/plugins/like/
-		$html .= sprintf( '<div class="fb-like" data-href="%s" data-send="false" data-width="200" data-layout="button_count" data-show-faces="false"></div>', $value );
+		$html .= sprintf( '<div class="fb-like" data-href="%s" data-send="false" data-width="200" data-layout="button_count" data-show-faces="false"></div>', esc_url( $value ) );
 		$html .= '</div>';
 
 		return $html;

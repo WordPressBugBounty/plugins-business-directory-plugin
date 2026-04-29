@@ -43,6 +43,8 @@ final class WPBDP {
 	public $rewrite;
 	public $admin;
 	public $privacy;
+	public $_importing_csv          = false;
+	public $_importing_csv_no_email = false;
 
 	public function __construct() {
 		$this->_db_version = get_option( 'wpbdp-db-version', null );
@@ -55,7 +57,7 @@ final class WPBDP {
 	}
 
 	private function setup_constants() {
-		define( 'WPBDP_VERSION', '6.4.22' );
+		define( 'WPBDP_VERSION', '6.4.23' );
 
 		define( 'WPBDP_PATH', wp_normalize_path( plugin_dir_path( WPBDP_PLUGIN_FILE ) ) );
 		define( 'WPBDP_INC', trailingslashit( WPBDP_PATH . 'includes' ) );
@@ -499,10 +501,15 @@ final class WPBDP {
 		return false;
 	}
 
+	/**
+	 * Handle AJAX image uploads from submit listing form.
+	 *
+	 * @since 6.4.23
+	 */
 	public function ajax_listing_submit_image_upload() {
 		$res = new WPBDP_AJAX_Response();
 
-		$listing_id = intval( $_REQUEST['listing_id'] );
+		$listing_id = intval( $_REQUEST['listing_id'] ?? 0 );
 
 		if ( ! $listing_id ) {
 			return $res->send_error();
@@ -541,7 +548,9 @@ final class WPBDP {
 			return $res->send_error( __( 'Please select a plan before uploading images to the listing', 'business-directory-plugin' ) );
 		}
 
-		$slots_available = absint( $plan->fee_images ) - absint( $_POST['images_count'] );
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$images_count    = absint( $_POST['images_count'] ?? 0 );
+		$slots_available = absint( $plan->fee_images ) - $images_count;
 		if ( 0 >= $slots_available ) {
 			return $res->send_error( __( 'Can not upload any more images for this listing.', 'business-directory-plugin' ) );
 		} elseif ( $slots_available < count( $files ) ) {

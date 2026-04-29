@@ -163,7 +163,7 @@ class WPBDP_CSV_Import {
 	private function get_csv_file() {
 		$file = new SplFileObject( $this->csv_file );
 		$file->setFlags( SplFileObject::READ_CSV );
-		$file->setCsvControl( $this->settings['csv-file-separator'] );
+		$file->setCsvControl( $this->settings['csv-file-separator'], '"', '\\' );
 		return $file;
 	}
 	private function get_current_line( $file ) {
@@ -399,7 +399,7 @@ class WPBDP_CSV_Import {
 		$header_line = $this->remove_bom( $file->current() );
 		$header_line = $this->maybe_convert_encoding( $header_line );
 
-		$this->set_header( str_getcsv( $header_line, $this->settings['csv-file-separator'] ) );
+		$this->set_header( str_getcsv( $header_line, $this->settings['csv-file-separator'], '"', '\\' ) );
 
 		$file->next();
 		$this->current_line = $file->key();
@@ -515,7 +515,7 @@ class WPBDP_CSV_Import {
 				continue;
 			}
 
-			$term_name = str_replace( '&', '&amp;', $c['name'] );
+			$term_name = $c['name'];
 			$t         = term_exists( $term_name, WPBDP_CATEGORY_TAX );
 			if ( $t ) {
 				$c['term_id'] = $t['term_id'];
@@ -883,7 +883,7 @@ class WPBDP_CSV_Import {
 		$csv_category = str_replace( "\n", '-', $csv_category );
 		$csv_category = strip_tags( $csv_category );
 		$csv_category = str_replace( array( '"', "'" ), '', $csv_category );
-		return str_replace( '& ', '&amp; ', $csv_category );
+		return $csv_category;
 	}
 
 	private function get_header() {

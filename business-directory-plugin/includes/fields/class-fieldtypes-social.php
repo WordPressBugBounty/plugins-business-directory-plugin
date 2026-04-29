@@ -118,7 +118,7 @@ class WPBDP_FieldTypes_Social extends WPBDP_Form_Field_Type {
 			$text_input .= sprintf(
 				'<input id="wpbdp-field-%1$d-social-text" type="text" name="listingfields[%s][social-text]" value="%s" placeholder="%s">',
 				$field->get_id(),
-				! empty( $value['social-text'] ) ? $value['social-text'] : '',
+				esc_attr( $value['social-text'] ?? '' ),
 				esc_attr__( 'Text to be displayed for social field', 'business-directory-plugin' )
 			);
 		}
@@ -228,6 +228,40 @@ class WPBDP_FieldTypes_Social extends WPBDP_Form_Field_Type {
 		return $html;
 	}
 
+	/**
+	 * Sanitize the field input value.
+	 *
+	 * @since 6.4.23
+	 *
+	 * @param WPBDP_Form_Field $field The field object.
+	 * @param mixed            $input The raw input value.
+	 *
+	 * @return array
+	 */
+	public function convert_input( &$field, $input ) {
+		if ( ! is_array( $input ) ) {
+			return array( esc_url_raw( $input ) );
+		}
+
+		if ( isset( $input[0] ) ) {
+			$input[0] = esc_url_raw( $input[0] );
+		}
+
+		if ( isset( $input['social-text'] ) ) {
+			$input['social-text'] = sanitize_text_field( $input['social-text'] );
+		}
+
+		if ( isset( $input['type'] ) && ! in_array( $input['type'], $this->social_types, true ) ) {
+			$input['type'] = '';
+		}
+
+		if ( isset( $input['social-icon'] ) ) {
+			$input['social-icon'] = absint( $input['social-icon'] );
+		}
+
+		return $input;
+	}
+
 	public function get_supported_associations() {
 		return array( 'meta' );
 	}
@@ -270,8 +304,8 @@ class WPBDP_FieldTypes_Social extends WPBDP_Form_Field_Type {
 
 			$social_icon = sprintf(
 				'<img src="%s" class="logo" alt="%s">',
-				WPBDP_ASSETS_URL . 'images/social/' . $type . '.svg',
-				$type
+				esc_url( WPBDP_ASSETS_URL . 'images/social/' . $type . '.svg' ),
+				esc_attr( $type )
 			);
 
 			if ( 'Other' === $type ) {
