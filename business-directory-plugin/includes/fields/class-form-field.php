@@ -498,6 +498,11 @@ class WPBDP_Form_Field {
 	public function validate( $value, &$errors = null ) {
 		$errors = ! is_array( $errors ) ? array() : $errors;
 
+		// Private fields are hidden from non-admins, so they must not block submit.
+		if ( $this->has_display_flag( 'private' ) && ! wpbdp_user_is_admin() ) {
+			return true;
+		}
+
 		$validation_api = WPBDP_FieldValidation::instance();
 
 		if ( ! $this->is_required() && $this->type->is_empty_value( $value ) ) {
@@ -716,6 +721,11 @@ class WPBDP_Form_Field {
 		$res = $this->type->before_field_update( $this );
 		if ( is_wp_error( $res ) ) {
 			return $res;
+		}
+
+		// Admin-only fields are not visible to non-admins, so they cannot be required.
+		if ( $this->has_display_flag( 'private' ) && $this->is_required() ) {
+			$this->set_validators( array_values( array_diff( $this->validators, array( 'required' ) ) ) );
 		}
 
 		$data = array();
@@ -942,15 +952,20 @@ class WPBDP_Form_Field {
 					}
 
 					if ( is_string( $term_ ) ) {
-						$tt_ids = $wpdb->get_col(
-							$wpdb->prepare(
-								"SELECT DISTINCT tt.term_taxonomy_id FROM {$wpdb->term_taxonomy} tt JOIN {$wpdb->terms} t ON t.term_id = tt.term_id WHERE tt.taxonomy = %s AND t.name LIKE '%%%s%%'",
-								$tax,
-								htmlspecialchars( $term_, ENT_QUOTES, $charset )
+						$tt_ids = array_merge(
+							$tt_ids,
+							$wpdb->get_col(
+								$wpdb->prepare(
+									"SELECT DISTINCT tt.term_taxonomy_id FROM {$wpdb->term_taxonomy} tt JOIN {$wpdb->terms} t ON t.term_id = tt.term_id WHERE tt.taxonomy = %s AND t.name LIKE '%%%s%%'",
+									$tax,
+									htmlspecialchars( $term_, ENT_QUOTES, $charset )
+								)
 							)
 						);
 					}
 				}
+
+				$tt_ids = array_values( array_unique( array_map( 'intval', $tt_ids ) ) );
 
 				if ( $tt_ids ) {
 					list( $alias, $reused ) = $search->join_alias( $wpdb->term_relationships );
