@@ -633,8 +633,7 @@ class WPBDP_Listing {
 		}
 
 		if ( empty( $user_id ) || ! $this->id ) {
-			// This function is currently intended for logged in users.
-			return true;
+			return false;
 		}
 
 		$post = get_post( $this->id );
@@ -662,6 +661,72 @@ class WPBDP_Listing {
 	public function validate_access_key_hash( $hash ) {
 		$key = $this->get_access_key();
 		return sha1( $this->get_auth_key() . $key ) == $hash;
+	}
+
+	/**
+	 * Get or create the unguessable token used to continue a guest auto-draft.
+	 *
+	 * @since 6.4.27
+	 *
+	 * @return string Empty when the listing is not an auto-draft.
+	 */
+	public function get_submit_token() {
+		if ( ! $this->id || WPBDP_POST_TYPE !== get_post_type( $this->id ) ) {
+			return '';
+		}
+
+		if ( 'auto-draft' !== get_post_status( $this->id ) ) {
+			return '';
+		}
+
+		$token = get_post_meta( $this->id, '_wpbdp[submit_token]', true );
+		if ( is_string( $token ) && '' !== $token ) {
+			return $token;
+		}
+
+		$token = wp_generate_password( 32, false, false );
+		if ( update_post_meta( $this->id, '_wpbdp[submit_token]', $token ) ) {
+			return $token;
+		}
+
+		return '';
+	}
+
+	/**
+	 * Whether a submitted auto-draft token matches the stored secret.
+	 *
+	 * @since 6.4.27
+	 *
+	 * @param mixed $token Token from the request.
+	 *
+	 * @return bool
+	 */
+	public function validate_submit_token( $token ) {
+		if ( ! is_string( $token ) || '' === $token ) {
+			return false;
+		}
+
+		$stored = get_post_meta( $this->id, '_wpbdp[submit_token]', true );
+		if ( ! is_string( $stored ) || '' === $stored ) {
+			return false;
+		}
+
+		return hash_equals( $stored, $token );
+	}
+
+	/**
+	 * Remove the short-lived submit token after the listing leaves auto-draft.
+	 *
+	 * @since 6.4.27
+	 *
+	 * @return void
+	 */
+	public function delete_submit_token() {
+		if ( ! $this->id ) {
+			return;
+		}
+
+		delete_post_meta( $this->id, '_wpbdp[submit_token]' );
 	}
 
 	/**

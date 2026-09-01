@@ -57,7 +57,7 @@ final class WPBDP {
 	}
 
 	private function setup_constants() {
-		define( 'WPBDP_VERSION', '6.4.26' );
+		define( 'WPBDP_VERSION', '6.4.27' );
 
 		define( 'WPBDP_PATH', wp_normalize_path( plugin_dir_path( WPBDP_PLUGIN_FILE ) ) );
 		define( 'WPBDP_INC', trailingslashit( WPBDP_PATH . 'includes' ) );
@@ -523,8 +523,8 @@ final class WPBDP {
 		if ( ! $listing ) {
 			return $res->send_error( __( 'Invalid listing', 'business-directory-plugin' ) );
 		}
-		
-		if ( ! wpbdp_user_is_admin() && ! $listing->owned_by_user( get_current_user_id() ) ) {
+
+		if ( ! $this->can_edit_listing_images( $listing_id ) ) {
 			return $res->send_error( __( 'You do not have permission to upload images to this listing', 'business-directory-plugin' ) );
 		}
 
@@ -597,8 +597,9 @@ final class WPBDP {
 			$html .= wpbdp_render(
 				'submit-listing-images-single',
 				array(
-					'image_id'   => $attachment_id,
-					'listing_id' => $listing_id,
+					'image_id'             => $attachment_id,
+					'listing_id'           => $listing_id,
+					'listing_submit_token' => $listing->get_submit_token(),
 				),
 				false
 			);
@@ -659,7 +660,7 @@ final class WPBDP {
 			$res->send_error();
 		}
 
-		if ( ! wpbdp_user_can( 'edit', $listing_id ) ) {
+		if ( ! $this->can_edit_listing_images( $listing_id ) ) {
 			$res->send_error();
 		}
 
@@ -668,6 +669,23 @@ final class WPBDP {
 
 		$res->add( 'imageId', $image_id );
 		$res->send();
+	}
+
+	/**
+	 * Whether the current request may add or remove images on a listing.
+	 *
+	 * @since 6.4.27
+	 *
+	 * @param int $listing_id Listing ID.
+	 *
+	 * @return bool
+	 */
+	private function can_edit_listing_images( $listing_id ) {
+		if ( 'auto-draft' === get_post_status( $listing_id ) ) {
+			return wpbdp_user_can_access_auto_draft( $listing_id );
+		}
+
+		return (bool) wpbdp_user_can( 'edit', $listing_id );
 	}
 
 	public function ajax_listing_media_image() {
@@ -717,13 +735,17 @@ final class WPBDP {
 		$image_ids = is_array( $image_ids ) ? $image_ids : array( $image_ids );
 		WPBDP_Listing_Image::maybe_set_post_parent( $image_ids, $listing_id );
 
+		$listing              = wpbdp_get_listing( $listing_id );
+		$listing_submit_token = $listing ? $listing->get_submit_token() : '';
+
 		$html = '';
 		foreach ( $image_ids as $id ) {
 			$html .= wpbdp_render(
 				'submit-listing-images-single',
 				array(
-					'image_id'   => $id,
-					'listing_id' => $listing_id,
+					'image_id'             => $id,
+					'listing_id'           => $listing_id,
+					'listing_submit_token' => $listing_submit_token,
 				),
 				false
 			);

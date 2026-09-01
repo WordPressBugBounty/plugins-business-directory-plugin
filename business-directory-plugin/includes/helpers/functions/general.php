@@ -348,7 +348,7 @@ function wpbdp_user_can( $action, $listing_id = null, $user_id = null ) {
 		case 'delete':
 			$res = user_can( $user_id, 'edit_others_posts' );
 			$res = $res || ( $user_id && $post->post_author && $post->post_author == $user_id );
-			$res = $res || ( ! $user_id && wpbdp_get_option( 'enable-key-access' ) );
+			$res = $res || ( ! $user_id && wpbdp_request_has_valid_access_key( $listing_id ) );
 			break;
 		default:
 			break;
@@ -358,6 +358,98 @@ function wpbdp_user_can( $action, $listing_id = null, $user_id = null ) {
 	$res = apply_filters( 'wpbdp_user_can_' . $action, $res, $listing_id, $user_id );
 
 	return $res;
+}
+
+/**
+ * Whether the current request includes a valid listing access-key hash.
+ *
+ * @since 6.4.27
+ *
+ * @param int $listing_id Listing ID.
+ *
+ * @return bool
+ */
+function wpbdp_request_has_valid_access_key( $listing_id ) {
+	if ( ! wpbdp_get_option( 'enable-key-access' ) ) {
+		return false;
+	}
+
+	$key_hash = wpbdp_get_var( array( 'param' => 'access_key_hash' ), 'request' );
+	if ( ! $key_hash ) {
+		return false;
+	}
+
+	$listing = wpbdp_get_listing( $listing_id );
+	return $listing && $listing->validate_access_key_hash( $key_hash );
+}
+
+/**
+ * Whether guests may see listing edit/delete links that lead to access-key login.
+ *
+ * @since 6.4.27
+ *
+ * @return bool
+ */
+function wpbdp_guest_can_use_access_key() {
+	return ! is_user_logged_in() && (bool) wpbdp_get_option( 'enable-key-access' );
+}
+
+/**
+ * Whether the current request includes a valid auto-draft submit token.
+ *
+ * @since 6.4.27
+ *
+ * @param int $listing_id Listing ID.
+ *
+ * @return bool
+ */
+function wpbdp_request_has_valid_submit_token( $listing_id ) {
+	$listing_id = absint( $listing_id );
+	if ( ! $listing_id ) {
+		return false;
+	}
+
+	$post = get_post( $listing_id );
+	if ( ! $post || WPBDP_POST_TYPE !== $post->post_type || 'auto-draft' !== $post->post_status ) {
+		return false;
+	}
+
+	$token = wpbdp_get_var( array( 'param' => 'listing_submit_token' ), 'request' );
+	if ( ! is_string( $token ) || '' === $token ) {
+		return false;
+	}
+
+	$listing = wpbdp_get_listing( $listing_id );
+	return $listing && $listing->validate_submit_token( $token );
+}
+
+/**
+ * Whether the current user may continue an auto-draft listing.
+ *
+ * Logged-in owners and admins pass via edit capability. Guests need the submit token.
+ *
+ * @since 6.4.27
+ *
+ * @param int $listing_id Listing ID.
+ *
+ * @return bool
+ */
+function wpbdp_user_can_access_auto_draft( $listing_id ) {
+	$listing_id = absint( $listing_id );
+	if ( ! $listing_id ) {
+		return false;
+	}
+
+	$post = get_post( $listing_id );
+	if ( ! $post || WPBDP_POST_TYPE !== $post->post_type || 'auto-draft' !== $post->post_status ) {
+		return false;
+	}
+
+	if ( wpbdp_user_can( 'edit', $listing_id ) ) {
+		return true;
+	}
+
+	return wpbdp_request_has_valid_submit_token( $listing_id );
 }
 
 function wpbdp_get_post_by_slug( $slug, $post_type = null ) {

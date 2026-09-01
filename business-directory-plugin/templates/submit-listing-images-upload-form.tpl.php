@@ -1,19 +1,39 @@
 <?php
-$admin      = isset( $admin ) ? $admin : false;
-$listing_id = isset( $listing_id ) ? $listing_id : 0;
+$admin                = isset( $admin ) ? $admin : false;
+$listing_id           = isset( $listing_id ) ? $listing_id : 0;
+$listing_submit_token = $listing_submit_token ?? '';
+
+$ajax_args = array(
+	'listing_id' => $listing_id,
+);
+$key_hash  = wpbdp_get_var( array( 'param' => 'access_key_hash' ), 'request' );
+if ( $key_hash ) {
+	$ajax_args['access_key_hash'] = $key_hash;
+}
+
+if ( empty( $listing_submit_token ) ) {
+	$listing_submit_token = wpbdp_get_var( array( 'param' => 'listing_submit_token' ), 'request' );
+}
+if ( is_string( $listing_submit_token ) && '' !== $listing_submit_token ) {
+	$ajax_args['listing_submit_token'] = $listing_submit_token;
+}
 
 $action = add_query_arg(
-	array(
-		'action'     => 'wpbdp-listing-submit-image-upload',
-		'listing_id' => $listing_id,
+	array_merge(
+		$ajax_args,
+		array(
+			'action' => 'wpbdp-listing-submit-image-upload',
+		)
 	),
 	admin_url( 'admin-ajax.php' )
 );
 
 $media_action = add_query_arg(
-	array(
-		'action'     => 'wpbdp-listing-media-image',
-		'listing_id' => $listing_id,
+	array_merge(
+		$ajax_args,
+		array(
+			'action' => 'wpbdp-listing-media-image',
+		)
 	),
 	admin_url( 'admin-ajax.php' )
 );
