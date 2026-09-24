@@ -44,8 +44,6 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 
 		public $settings_admin;
 
-		public $site_tracking;
-
 		public $displayed_warnings = array();
 
 		public $post_install_migration;
@@ -87,7 +85,6 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 
 			add_action( 'wp_ajax_wpbdp-create-main-page', array( &$this, 'ajax_create_main_page' ) );
 			add_action( 'wp_ajax_wpbdp-drip_subscribe', array( &$this, 'ajax_drip_subscribe' ) );
-			add_action( 'wp_ajax_wpbdp-set_site_tracking', 'WPBDP_SiteTracking::handle_ajax_response' );
 			add_action( 'wp_ajax_wpbdp_dismiss_notification', array( &$this, 'ajax_dismiss_notification' ) );
 
 			add_action( 'wpbdp_admin_ajax_dismiss_notification_server_requirements', array( $this, 'ajax_dismiss_notification_server_requirements' ) );
@@ -127,10 +124,6 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 
 			add_action( 'wpbdp_settings_subtab_uninstall', array( $this, 'uninstall_plugin' ) );
 
-			if ( wpbdp_get_option( 'tracking-on' ) ) {
-				$this->site_tracking = new WPBDP_SiteTracking();
-			}
-
 			require_once WPBDP_INC . 'admin/controllers/class-onboarding-wizard.php';
 			$this->onboarding_wizard = new WPBDP_Onboarding_Wizard();
 			$this->onboarding_wizard->load_admin_hooks();
@@ -169,15 +162,11 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 		 * @return mixed
 		 */
 		private function pointer_callback() {
-			$callback = false;
 			if ( $this->should_show_pointer( 'drip' ) ) {
-				$callback = array( $this, 'drip_pointer' );
-			} elseif ( ! wpbdp_get_option( 'tracking-on', false ) && $this->should_show_pointer( 'tracking' ) ) {
-				// Ask for site tracking if needed.
-				$callback = 'WPBDP_SiteTracking::request_js';
+				return array( $this, 'drip_pointer' );
 			}
 
-			return $callback;
+			return false;
 		}
 
 		/**
@@ -1220,12 +1209,7 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 					break;
 
 				case 'renewlisting':
-					foreach ( $posts as $post_id ) :
-						$listing = WPBDP_Listing::get( $post_id );
-						$listing->renew();
-					endforeach;
-
-					$this->messages[] = _nx( 'Listing was renewed.', 'Listings were renewed.', count( $posts ), 'admin', 'business-directory-plugin' );
+					$this->renew_selected_listings( $posts );
 					break;
 
 				case 'send-renewal-email':
@@ -1268,6 +1252,31 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 			}
 
 			$_SERVER['REQUEST_URI'] = remove_query_arg( array( 'wpbdmaction', 'wpbdmfilter', 'transaction_id', 'category_id', 'fee_id', 'u', 'renewal_id', 'flagging_user' ), wpbdp_get_server_value( 'REQUEST_URI' ) );
+		}
+
+		/**
+		 * Renew selected listings from the admin list table.
+		 *
+		 * @since 6.4.28
+		 *
+		 * @param array $posts Listing post IDs.
+		 */
+		private function renew_selected_listings( $posts ) {
+			$renewed = 0;
+
+			foreach ( $posts as $post_id ) {
+				$listing = WPBDP_Listing::get( $post_id );
+				if ( $listing && $listing->renew( 'admin' ) ) {
+					++$renewed;
+				}
+			}
+
+			if ( $renewed ) {
+				$this->messages[] = _nx( 'Listing was renewed.', 'Listings were renewed.', $renewed, 'admin', 'business-directory-plugin' );
+				return;
+			}
+
+			$this->messages[] = array( __( 'Listing could not be renewed.', 'business-directory-plugin' ), 'error' );
 		}
 
 		/**
@@ -1458,17 +1467,7 @@ if ( ! class_exists( 'WPBDP_Admin' ) ) {
 				// Clear scheduled hooks.
 				wp_clear_scheduled_hook( 'wpbdp_hourly_events' );
 				wp_clear_scheduled_hook( 'wpbdp_daily_events' );
-
-				$tracking = new WPBDP_SiteTracking();
-				$tracking->track_uninstall(
-					wpbdp_get_var(
-						array(
-							'param'   => 'uninstall',
-							'default' => null,
-						),
-						'post'
-					)
-				);
+				wp_clear_scheduled_hook( 'wpbdp_site_tracking' );
 
 				// Deactivate plugin.
 				$real_path = WPBDP_PATH . 'business-directory-plugin.php';
