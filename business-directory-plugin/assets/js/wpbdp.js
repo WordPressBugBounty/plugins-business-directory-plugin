@@ -6,6 +6,29 @@ if (typeof(window.wpbdp) == 'undefined') {
     window.wpbdp = {};
 }
 
+/**
+ * Give the SelectWoo search inputs the text of the field label.
+ *
+ * @since 6.4.29
+ * @param {jQuery} $selects Select elements initialized with SelectWoo.
+ */
+window.wpbdp.labelSelectWooSearch = function( $selects ) {
+	$selects.each( function() {
+		const instance = jQuery( this ).data( 'select2' );
+		const $label = jQuery( 'label[for="' + this.id + '"]' ).first().clone();
+
+		$label.find( '.wpbdp-form-field-required-indicator' ).remove();
+
+		const labelText = $label.text().trim();
+
+		if ( ! instance || ! labelText ) {
+			return;
+		}
+
+		instance.$container.add( instance.$dropdown ).find( '.select2-search__field' ).attr( 'aria-label', labelText );
+	} );
+};
+
 jQuery(function( $ ) {
     $( '.wpbdp-no-js' ).hide();
 });
@@ -13,13 +36,20 @@ jQuery(function( $ ) {
 jQuery(document).ready(function($){
     if ( $( '.wpbdp-js-select2' ).length > 0 && $.fn.selectWoo ) {
         $( '.wpbdp-js-select2' ).selectWoo();
+		wpbdp.labelSelectWooSearch( $( '.wpbdp-js-select2' ) );
 		document.body.classList.add( 'wpbdp-has-select2' );
     }
 
     // Move the featured badge to the theme h1.
-    var sticky = $( '.wpbdp-listing-single .wpbdp-sticky-tag' );
+    // Keep the badge link (sticky-image-link-to) when one wraps the badge.
+    const sticky = $( '.wpbdp-listing-single' ).find( '.wpbdp-sticky-tag, .stickytag' ).first();
     if ( sticky.length ) {
-        $( 'h1:first' ).append( sticky );
+        // Prefer the listing's own title over a site-title h1 in the header.
+        const titleSelectors = [ '.wpbdp-listing-single .show-listing-title h1', 'h1.entry-title', 'h1.wp-block-post-title', 'h1:visible' ];
+        const listingTitle = titleSelectors.map( ( selector ) => $( selector ).first() ).find( ( title ) => title.length );
+        if ( listingTitle ) {
+            listingTitle.append( sticky.parent( 'a' ).length ? sticky.parent( 'a' ) : sticky );
+        }
     }
 
     /**
@@ -595,8 +625,8 @@ function parse_query_string(query) {
 	var query_string = {};
 	for (var i = 0; i < vars.length; i++) {
 		var pair = vars[i].split("=");
-		var key = decodeURIComponent(pair.shift());
-		var value = decodeURIComponent(pair.join("="));
+		var key = decodeURIComponent(pair.shift().replace(/\+/g, " "));
+		var value = decodeURIComponent(pair.join("=").replace(/\+/g, " "));
 		// If first entry with this name
 		if (typeof query_string[key] === "undefined") {
 			query_string[key] = value;

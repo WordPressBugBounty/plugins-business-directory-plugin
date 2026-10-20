@@ -416,8 +416,12 @@ class WPBDP__Views__Submit_Listing extends WPBDP__Authenticated_Listing_View {
 	public function ajax_reset_plan() {
 		$res = new WPBDP_AJAX_Response();
 
-		if ( ! $this->can_submit( $msg ) || empty( $_POST['listing_id'] ) || ! $this->verify_ajax_request() ) {
-			wp_die();
+		if ( ! $this->can_submit( $msg ) || empty( $_POST['listing_id'] ) ) {
+			$res->send_error( $msg );
+		}
+
+		if ( ! $this->verify_ajax_request() ) {
+			$res->send_error( __( 'You do not have permission to perform this action.', 'business-directory-plugin' ) );
 		}
 
 		$this->find_or_create_listing();
@@ -1827,6 +1831,7 @@ class WPBDP__Views__Submit_Listing extends WPBDP__Authenticated_Listing_View {
 			if ( ! empty( $this->data['account_details'] ) ) {
 				// Prevent conflicts with other plugins checking the captcha.
 				remove_action( 'registration_errors', 'gglcptch_register_check' );
+				remove_filter( 'registration_errors', 'wpa_wpregistration_extra_validation' );
 				add_filter( 'wordfence_ls_require_captcha', '__return_false' );
 
 				$user_id = register_new_user( $this->data['account_details']['username'], $this->data['account_details']['email'] );

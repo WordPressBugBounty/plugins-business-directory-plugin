@@ -51,6 +51,7 @@ class WPBDP__Views__Manage_Listings extends WPBDP__View {
 			)
 		);
 
+		wp_reset_postdata();
 		wpbdp_pop_query();
 
 		return $html;
@@ -93,7 +94,11 @@ class WPBDP__Views__Manage_Listings extends WPBDP__View {
 	 * @return string
 	 */
 	public function maybe_add_renew_button( $buttons, $listing_id ) {
-		$listing        = wpbdp_get_listing( $listing_id );
+		$listing = wpbdp_get_listing( $listing_id );
+		if ( ! $listing ) {
+			return $buttons;
+		}
+
 		$listing_status = $listing->get_status();
 
 		if ( 'complete' === $listing_status ) {
@@ -104,9 +109,15 @@ class WPBDP__Views__Manage_Listings extends WPBDP__View {
 			return $buttons;
 		}
 
-		$is_pending_payment = ( 'pending_payment' === $listing_status );
-		$payment_url        = $listing->get_payment_url();
-		$show_button        = ! $is_pending_payment || $payment_url;
+		$is_pending_payment      = ( 'pending_payment' === $listing_status );
+		$can_manage_subscription = 'expired' !== $listing_status && $listing->has_subscription();
+
+		if ( ! $is_pending_payment && ! $can_manage_subscription && ! $listing->can_renew( 'owner' ) ) {
+			return $buttons . '<span>' . esc_html__( 'Pending', 'business-directory-plugin' ) . '</span> ';
+		}
+
+		$payment_url = $listing->get_payment_url();
+		$show_button = ! $is_pending_payment || $payment_url;
 
 		if ( ! $show_button ) {
 			return $buttons;
