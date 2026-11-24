@@ -48,6 +48,9 @@ class WPBDP_WPML_Compat {
 
 			add_filter( 'wpbdp_form_field_value', array( $this, 'maybe_use_original_field_value' ), 10, 3 );
 			add_filter( 'wpbdp_form_field_html_value', array( $this, 'maybe_use_original_field_html_value' ), 10, 4 );
+			add_filter( 'wpbdp_configure_search', array( $this, 'maybe_search_original_field_value' ), 10, 2 );
+		} else {
+			add_filter( 'post_type_link', array( $this, 'admin_listing_link' ), 11, 2 );
 		}
 
 		add_action( 'admin_footer', array( $this, 'maybe_register_some_strings' ) );
@@ -96,6 +99,54 @@ class WPBDP_WPML_Compat {
 		}
 
 		return $trans_id;
+	}
+
+	/**
+	 * In the admin area, build listing links on the directory page in the listing's language.
+	 *
+	 * The language filters for page IDs only run on the front end, so the admin
+	 * would otherwise use whichever directory page was found first.
+	 *
+	 * @since 6.4.30
+	 *
+	 * @param string      $link The listing permalink.
+	 * @param int|WP_Post $post The listing.
+	 *
+	 * @return string
+	 */
+	public function admin_listing_link( $link, $post ) {
+		$post = get_post( $post );
+		if ( ! $post || WPBDP_POST_TYPE !== $post->post_type || ! wpbdp_rewrite_on() ) {
+			return $link;
+		}
+
+		$lang = apply_filters(
+			'wpml_element_language_code',
+			null,
+			array(
+				'element_id'   => $post->ID,
+				'element_type' => WPBDP_POST_TYPE,
+			)
+		);
+		if ( ! $lang ) {
+			return $link;
+		}
+
+		$main_id  = wpbdp_get_page_id( 'main' );
+		$trans_id = $main_id ? apply_filters( 'wpml_object_id', $main_id, 'page', false, $lang ) : 0;
+		if ( ! $trans_id ) {
+			return $link;
+		}
+
+		$base_link = apply_filters( 'wpbdp_url_base_url', _get_page_link( $main_id ), $main_id );
+		if ( false === strpos( $link, $base_link ) ) {
+			return $link;
+		}
+
+		$trans_link = apply_filters( 'wpbdp_url_base_url', get_page_link( $trans_id ), $trans_id );
+		$trans_link = $this->fix_get_page_link( $trans_link, $trans_id );
+
+		return $this->maybe_add_lang_query_arg( str_replace( $base_link, $trans_link, $link ), $lang );
 	}
 
 	public function add_lang_to_link( $link ) {
@@ -158,6 +209,8 @@ class WPBDP_WPML_Compat {
 			case 'all_listings':
 			case 'view_listings':
 			case 'submit_listing':
+			case 'listing_contact':
+			case 'flag_listing':
 				$link = $this->maybe_add_lang_query_arg( $link, $lang );
 				break;
 
@@ -169,7 +222,8 @@ class WPBDP_WPML_Compat {
 	}
 
 	private function maybe_add_lang_query_arg( $link, $lang ) {
-		if ( 3 === $this->get_lang_url_type() ) {
+		// WPML redirects ?lang=<default language> to the URL without it, which drops POST data (contact form).
+		if ( 3 === $this->get_lang_url_type() && apply_filters( 'wpml_default_language', null ) !== $lang ) {
 			$link = add_query_arg( 'lang', $lang, $link );
 		}
 
@@ -619,6 +673,79 @@ class WPBDP_WPML_Compat {
 		}
 
 		return $field->html_value( $original_id, $display_context );
+	}
+
+	/**
+	 * Also match translated listings that show the original listing's value for a field.
+	 *
+	 * Translations with an empty value display the original listing's value
+	 * (see maybe_use_original_field_value()), so the search should find them too.
+	 *
+	 * @since 6.4.30
+	 *
+	 * @param array            $search_res The search query pieces for this field.
+	 * @param WPBDP_Form_Field $field      The field being searched.
+	 *
+	 * @return array
+	 */
+	public function maybe_search_original_field_value( $search_res, $field ) {
+		global $wpdb;
+
+		if ( 'meta' !== $field->get_association() || empty( $search_res['join'] ) || empty( $search_res['where'] ) ) {
+			return $search_res;
+		}
+
+		$translation_ids = $this->get_translations_using_original_value( $search_res, $field );
+
+		if ( $translation_ids ) {
+			$search_res['where'] = '( ' . $search_res['where'] . " OR {$wpdb->posts}.ID IN (" . implode( ',', $translation_ids ) . ') )';
+		}
+
+		return $search_res;
+	}
+
+	/**
+	 * Find translations with an empty field value whose original listing matches the search.
+	 *
+	 * @since 6.4.30
+	 *
+	 * @param array            $search_res The search query pieces for this field.
+	 * @param WPBDP_Form_Field $field      The field being searched.
+	 *
+	 * @return int[]
+	 */
+	private function get_translations_using_original_value( $search_res, $field ) {
+		global $wpdb;
+
+		$element_type = 'post_' . WPBDP_POST_TYPE;
+
+		// One query for all matches: the field's join and where only use the posts table and the field's own meta alias.
+		// Errors are suppressed in case a custom field type's pieces depend on other joins; the search then works as before.
+		$suppress      = $wpdb->suppress_errors();
+		$candidate_ids = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			"SELECT DISTINCT tr.element_id FROM {$wpdb->prefix}icl_translations orig
+			INNER JOIN {$wpdb->prefix}icl_translations tr ON tr.trid = orig.trid AND tr.element_type = orig.element_type AND tr.element_id <> orig.element_id
+			WHERE orig.element_type = '{$element_type}' AND NULLIF( orig.source_language_code, '' ) IS NULL AND tr.element_id > 0
+			AND orig.element_id IN ( SELECT {$wpdb->posts}.ID FROM {$wpdb->posts} {$search_res['join']} WHERE {$wpdb->posts}.post_type = '" . WPBDP_POST_TYPE . "' AND {$search_res['where']} )"
+		);
+		$wpdb->suppress_errors( $suppress );
+
+		if ( ! $candidate_ids ) {
+			return array();
+		}
+
+		$candidate_ids = array_map( 'intval', $candidate_ids );
+		_prime_post_caches( $candidate_ids, false, true );
+
+		$translation_ids = array();
+
+		foreach ( $candidate_ids as $translation_id ) {
+			if ( $field->is_empty_value( $field->value( $translation_id, true ) ) ) {
+				$translation_ids[] = $translation_id;
+			}
+		}
+
+		return $translation_ids;
 	}
 
 	/**
